@@ -110,6 +110,9 @@ dist
 # Serverless directories
 .serverless/
 
+# Netlify
+.netlify/
+
 # FuseBox cache
 .fusebox/
 
@@ -137,3 +140,14 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build outputs
+build/
