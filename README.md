@@ -1,169 +1,237 @@
 # netlify-function-mcp
 
-Serverless MCP (Model Context Protocol) server utilities for **Netlify Functions**.
-This repo provides:
+A TypeScript package for implementing Model Context Protocol (MCP) servers as Netlify Functions with support for 15-minute background execution.
 
-- A reusable **NPM package** `netlify-function-mcp` with types and helpers for building MCP tools.
-- An **example Netlify site** showing how to expose tools via a single MCP server function.
-- A simple **plugin architecture**: each tool is a TypeScript module with its own metadata + handler.
+## 🎯 Features
 
----
+- **MCP Protocol Compliant** - Implements JSON-RPC 2.0 message handling for full MCP protocol support
+- **Background Functions** - Supports 15-minute execution time for long-running operations
+- **Streamable HTTP Transport** - Compatible with MCP Inspector and other MCP clients
+- **Plugin Architecture** - Easy to add new tools as self-contained TypeScript modules
+- **TypeScript First** - Full type safety with TypeScript definitions
+- **Monorepo Structure** - Includes both the reusable package and example implementation
 
 ## 📂 Structure
 
 ```
-
 netlify-function-mcp/
 ├── packages/
-│   └── netlify-function-mcp/     # reusable package
+│   └── netlify-function-mcp/     # reusable NPM package
 │       └── src/
 │            ├── index.ts
 │            ├── types.ts
-│            └── buildTools.ts
+│            ├── buildTools.ts
+│            ├── mcp-server.ts    # MCP protocol implementation
+│            ├── jsonrpc.ts       # JSON-RPC 2.0 handling
+│            └── errors.ts        # Error handling
 ├── examples/
 │   └── netlify-site/             # demo Netlify site
 │       └── netlify/functions/mcp/
-│            ├── mcp.ts
+│            ├── mcp-background.ts  # Background function (-background suffix)
 │            └── tools/
 │                 ├── helloWorld.ts
 │                 └── index.ts
 └── package.json                  # monorepo root
+```
 
-````
+## 🚀 Quick Start
 
----
-
-## 🚀 Usage
-
-### 1. Install
-In your Netlify project:
+### 1. Install the package
 
 ```bash
 npm install netlify-function-mcp
-````
+```
 
-### 2. Create an MCP function
+### 2. Create an MCP background function
 
-Add `netlify/functions/mcp/mcp.ts`:
+Create `netlify/functions/mcp/mcp-background.ts`:
 
-```ts
+```typescript
 import type { Handler } from "@netlify/functions";
 import * as toolModules from "./tools";
-import { buildTools, buildRegistry } from "netlify-function-mcp";
+import { buildTools, McpServer } from "netlify-function-mcp";
 
 const tools = buildTools(toolModules);
-const toolRegistry = buildRegistry(tools);
+const mcpServer = new McpServer(
+  {
+    name: "my-mcp-server",
+    version: "1.0.0"
+  },
+  tools
+);
 
 const handler: Handler = async (event) => {
-  if (event.httpMethod === "GET" && event.path.includes("/mcp/listTools")) {
+  // Handle CORS preflight
+  if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        version: "1.0",
-        tools: tools.map(({ name, description, inputSchema }) => ({
-          name,
-          description,
-          inputSchema
-        }))
-      })
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Accept"
+      },
+      body: ""
     };
   }
 
-  if (event.httpMethod === "POST" && event.path.includes("/mcp/callTool")) {
-    const { tool, params } = JSON.parse(event.body || "{}");
-    const toolDef = toolRegistry[tool];
-    if (!toolDef) return { statusCode: 404, body: JSON.stringify({ error: "Unknown tool" }) };
-
-    const result = await toolDef.handler(params);
-    return {
-      statusCode: 200,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: result })
-    };
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: "Method not allowed" };
   }
 
-  return { statusCode: 404, body: JSON.stringify({ error: "Not Found" }) };
+  const response = await mcpServer.handleRequest(event.body || "");
+  return {
+    statusCode: 200,
+    headers: { 
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    },
+    body: JSON.stringify(response)
+  };
 };
 
 export { handler };
 ```
 
----
-
 ### 3. Create a tool
 
-In `netlify/functions/mcp/tools/helloWorld.ts`:
+In `netlify/functions/mcp/tools/myTool.ts`:
 
-```ts
+```typescript
 import { ToolHandler, ToolMetadata } from "netlify-function-mcp";
 
 export const metadata: ToolMetadata = {
-  description: "Returns a friendly greeting",
+  description: "My custom tool",
   inputSchema: {
     type: "object",
-    properties: { name: { type: "string" } },
-    required: ["name"]
+    properties: {
+      input: { type: "string" }
+    },
+    required: ["input"]
   }
 };
 
-export const handler: ToolHandler = async (params: { name: string }) => {
-  return { message: `Hello, ${params.name}!` };
+export const handler: ToolHandler = async (params: { input: string }) => {
+  // Your tool logic here
+  return { result: `Processed: ${params.input}` };
 };
 ```
 
-And in `tools/index.ts`:
+Export it from `tools/index.ts`:
 
-```ts
-export * as helloWorld from "./helloWorld";
+```typescript
+export * as myTool from "./myTool";
 ```
 
----
+### 4. Configure Netlify
 
-### 4. Test locally
+Add to `netlify.toml`:
 
-Run Netlify dev server:
+```toml
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/mcp"
+  to = "/.netlify/functions/mcp-background"
+  status = 200
+```
+
+## 🧪 Testing with MCP Inspector
+
+1. Start local development:
+   ```bash
+   netlify dev
+   ```
+
+2. Open MCP Inspector (v0.16.5+)
+
+3. Configure connection:
+   - Transport: **Streamable HTTP**
+   - URL: `http://localhost:8888/mcp`
+
+4. Click Connect
+
+The inspector will show available tools and allow you to test them.
+
+## 📡 MCP Protocol Implementation
+
+This package implements the Model Context Protocol with:
+
+### Supported Methods
+- `initialize` - Protocol handshake and capability exchange
+- `initialized` - Confirmation notification  
+- `tools/list` - Returns available tools with schemas
+- `tools/call` - Executes a tool with parameters
+
+### Transport
+- **Streamable HTTP** - Single endpoint handling JSON-RPC messages
+- **CORS Support** - Works with browser-based MCP clients
+- **Background Execution** - Up to 15 minutes for long-running operations
+
+### Message Format
+All communication uses JSON-RPC 2.0:
+
+```json
+// Request
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {}
+}
+
+// Response
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tools": [...]
+  }
+}
+```
+
+## 🛠 Development
+
+### Clone and Setup
 
 ```bash
+git clone https://github.com/yourusername/netlify-function-mcp.git
+cd netlify-function-mcp
+npm install
+```
+
+### Build Package
+
+```bash
+cd packages/netlify-function-mcp
+npm run build
+```
+
+### Run Example
+
+```bash
+cd examples/netlify-site
+npm install
 netlify dev
 ```
 
-List tools:
+## 📝 Background Functions
 
-```bash
-curl http://localhost:8888/mcp/listTools
-```
+The `-background` suffix in the function name enables:
+- **15-minute execution time** (vs 10 seconds for regular functions)
+- **Asynchronous processing** - Returns 202 immediately
+- **Long-running operations** - Data processing, API calls, computations
 
-Call tool:
-
-```bash
-curl -X POST http://localhost:8888/mcp/callTool \
-  -H "Content-Type: application/json" \
-  -d '{"tool":"helloWorld","params":{"name":"Rob"}}'
-```
-
----
-
-## 🛠 Features
-
-* **Single function endpoint** (`/.netlify/functions/mcp`) handles all MCP protocol requests.
-* **Plugin-like architecture**: tools live in `tools/*.ts`, self-contained with metadata + handler.
-* **No duplication**: tool name comes from the file name, not hardcoded twice.
-* **Reusable package**: `netlify-function-mcp` can be published to NPM for use in any Netlify site.
-
----
+Note: Background functions require Netlify Pro plan or above.
 
 ## 📌 Roadmap
 
-* [ ] CLI scaffolder to generate new tools automatically
-* [ ] Built-in request validation against `inputSchema`
-* [ ] Auth / rate limiting hooks in tool metadata
-* [ ] Example MCP client integration
-
----
+- [ ] SSE (Server-Sent Events) support for streaming responses
+- [ ] CLI tool for scaffolding new tools
+- [ ] Built-in request validation against inputSchema
+- [ ] Authentication and rate limiting hooks
+- [ ] Additional transport options (WebSocket, stdio)
 
 ## 📄 License
 
 MIT
-
-```

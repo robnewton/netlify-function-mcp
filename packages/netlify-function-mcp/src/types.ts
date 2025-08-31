@@ -11,3 +11,11 @@ export type Tool = {
   inputSchema: any;
   handler: ToolHandler;
 };
+
+export type McpContent = {
+  type: 'text' | 'image' | 'resource';
+  text?: string;
+  data?: string;
+  mimeType?: string;
+  uri?: string;
+};
