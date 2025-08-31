@@ -1,14 +1,15 @@
 # netlify-function-mcp
 
-A TypeScript package for implementing Model Context Protocol (MCP) servers as Netlify Functions with support for 15-minute background execution.
+A TypeScript package for implementing Model Context Protocol (MCP) servers as Netlify Functions with full JSON-RPC 2.0 support.
 
 ## 🎯 Features
 
 - **MCP Protocol Compliant** - Implements JSON-RPC 2.0 message handling for full MCP protocol support
-- **Background Functions** - Supports 15-minute execution time for long-running operations
 - **Streamable HTTP Transport** - Compatible with MCP Inspector and other MCP clients
 - **Plugin Architecture** - Easy to add new tools as self-contained TypeScript modules
+- **External API Integration** - Tools can call public REST APIs and return structured data
 - **TypeScript First** - Full type safety with TypeScript definitions
+- **Organized Structure** - MCP function and tools isolated in dedicated folder
 - **Monorepo Structure** - Includes both the reusable package and example implementation
 
 ## 📂 Structure
@@ -26,11 +27,13 @@ netlify-function-mcp/
 │            └── errors.ts        # Error handling
 ├── examples/
 │   └── netlify-site/             # demo Netlify site
-│       └── netlify/functions/mcp/
-│            ├── mcp-background.ts  # Background function (-background suffix)
-│            └── tools/
-│                 ├── helloWorld.ts
-│                 └── index.ts
+│       └── netlify/functions/
+│            └── mcp/              # MCP function folder
+│                 ├── mcp.ts       # Main MCP function
+│                 └── tools/       # Tool definitions
+│                      ├── helloWorld.ts
+│                      ├── jsonPlaceholder.ts
+│                      └── index.ts
 └── package.json                  # monorepo root
 ```
 
@@ -42,84 +45,160 @@ netlify-function-mcp/
 npm install netlify-function-mcp
 ```
 
-### 2. Create an MCP background function
+### 2. Create an MCP function
 
-Create `netlify/functions/mcp/mcp-background.ts`:
+Create `netlify/functions/mcp/mcp.ts`:
 
 ```typescript
 import type { Handler } from "@netlify/functions";
 import * as toolModules from "./tools";
 import { buildTools, McpServer } from "netlify-function-mcp";
 
+// Build tools from the tools directory
 const tools = buildTools(toolModules);
+
+// Create MCP server instance
 const mcpServer = new McpServer(
   {
-    name: "my-mcp-server",
+    name: "netlify-mcp-server",
     version: "1.0.0"
   },
   tools
 );
 
 const handler: Handler = async (event) => {
-  // Handle CORS preflight
+  // Handle CORS preflight requests
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Accept"
-      },
+        "Access-Control-Allow-Headers": "Content-Type, Accept",
+        "Access-Control-Max-Age": "86400"
+      } as Record<string, string>,
       body: ""
     };
   }
 
+  // Only handle POST requests for MCP protocol
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method not allowed" };
+    return {
+      statusCode: 405,
+      headers: {
+        "Content-Type": "application/json",
+        "Allow": "POST"
+      },
+      body: JSON.stringify({ error: "Method not allowed. Use POST for MCP requests." })
+    };
   }
 
-  const response = await mcpServer.handleRequest(event.body || "");
-  return {
-    statusCode: 200,
-    headers: { 
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*"
-    },
-    body: JSON.stringify(response)
-  };
+  if (!event.body) {
+    return {
+      statusCode: 400,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "Request body is required" })
+    };
+  }
+
+  try {
+    // Process the JSON-RPC request
+    const response = await mcpServer.handleRequest(event.body);
+    
+    return {
+      statusCode: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Accept"
+      },
+      body: JSON.stringify(response)
+    };
+  } catch (error) {
+    console.error("Error processing MCP request:", error);
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+          code: -32603,
+          message: "Internal server error",
+          data: error instanceof Error ? error.message : "Unknown error"
+        }
+      })
+    };
+  }
 };
 
 export { handler };
 ```
 
-### 3. Create a tool
+### 3. Create tools
 
-In `netlify/functions/mcp/tools/myTool.ts`:
+Example tool (`netlify/functions/mcp/tools/helloWorld.ts`):
 
 ```typescript
 import { ToolHandler, ToolMetadata } from "netlify-function-mcp";
 
 export const metadata: ToolMetadata = {
-  description: "My custom tool",
+  description: "Returns a friendly greeting",
   inputSchema: {
     type: "object",
-    properties: {
-      input: { type: "string" }
-    },
-    required: ["input"]
+    properties: { name: { type: "string" } },
+    required: ["name"]
   }
 };
 
-export const handler: ToolHandler = async (params: { input: string }) => {
-  // Your tool logic here
-  return { result: `Processed: ${params.input}` };
+export const handler: ToolHandler = async (params: { name: string }) => {
+  return { message: `Hello, ${params.name}!` };
 };
 ```
 
-Export it from `tools/index.ts`:
+API integration tool (`netlify/functions/mcp/tools/jsonPlaceholder.ts`):
 
 ```typescript
-export * as myTool from "./myTool";
+import { ToolHandler, ToolMetadata } from "netlify-function-mcp";
+
+export const metadata: ToolMetadata = {
+  description: "Fetches a blog post from JSONPlaceholder API by ID",
+  inputSchema: {
+    type: "object",
+    properties: {
+      postId: {
+        type: "number",
+        description: "The ID of the post to fetch (1-100)",
+        minimum: 1,
+        maximum: 100
+      }
+    },
+    required: ["postId"]
+  }
+};
+
+export const handler: ToolHandler = async (params: { postId: number }) => {
+  const response = await fetch(`https://jsonplaceholder.typicode.com/posts/${params.postId}`);
+  const post = await response.json();
+  
+  return {
+    success: true,
+    post: {
+      id: post.id,
+      title: post.title,
+      body: post.body,
+      preview: post.body.substring(0, 100) + "..."
+    }
+  };
+};
+```
+
+Export tools from `tools/index.ts`:
+
+```typescript
+export * as helloWorld from "./helloWorld";
+export * as jsonPlaceholder from "./jsonPlaceholder";
 ```
 
 ### 4. Configure Netlify
@@ -132,7 +211,7 @@ Add to `netlify.toml`:
 
 [[redirects]]
   from = "/mcp"
-  to = "/.netlify/functions/mcp-background"
+  to = "/.netlify/functions/mcp"
   status = 200
 ```
 
@@ -166,7 +245,7 @@ This package implements the Model Context Protocol with:
 ### Transport
 - **Streamable HTTP** - Single endpoint handling JSON-RPC messages
 - **CORS Support** - Works with browser-based MCP clients
-- **Background Execution** - Up to 15 minutes for long-running operations
+- **Synchronous Responses** - Real-time JSON-RPC responses for immediate results
 
 ### Message Format
 All communication uses JSON-RPC 2.0:
@@ -215,14 +294,18 @@ npm install
 netlify dev
 ```
 
-## 📝 Background Functions
+## 📝 Function Structure
 
-The `-background` suffix in the function name enables:
-- **15-minute execution time** (vs 10 seconds for regular functions)
-- **Asynchronous processing** - Returns 202 immediately
-- **Long-running operations** - Data processing, API calls, computations
+The implementation uses regular Netlify functions (not background functions) because:
+- **MCP requires synchronous responses** - JSON-RPC protocol needs immediate results
+- **10-second timeout** is sufficient for most API calls and data processing
+- **No special plan required** - Works on all Netlify plans
+- **Real-time communication** - Perfect for interactive MCP clients
 
-Note: Background functions require Netlify Pro plan or above.
+For operations that need more than 10 seconds, consider:
+- Optimizing tool logic for faster execution
+- Breaking large operations into smaller chunks
+- Using streaming responses (future roadmap item)
 
 ## 📌 Roadmap
 
@@ -230,7 +313,8 @@ Note: Background functions require Netlify Pro plan or above.
 - [ ] CLI tool for scaffolding new tools
 - [ ] Built-in request validation against inputSchema
 - [ ] Authentication and rate limiting hooks
-- [ ] Additional transport options (WebSocket, stdio)
+- [ ] Background function support for long-running operations (hybrid approach)
+- [ ] Tool discovery and auto-registration features
 
 ## 📄 License
 

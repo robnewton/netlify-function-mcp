@@ -1,12 +1,13 @@
 # Netlify MCP Server Example
 
-This example demonstrates how to run an MCP (Model Context Protocol) server as a Netlify background function.
+This example demonstrates how to run an MCP (Model Context Protocol) server as a Netlify function with full JSON-RPC 2.0 support.
 
 ## Features
 
-- **15-minute execution time** - Uses Netlify background functions for long-running operations
 - **MCP Protocol compliant** - Implements JSON-RPC 2.0 message handling
 - **Streamable HTTP transport** - Compatible with MCP Inspector and other MCP clients
+- **External API integration** - Includes tools that call public REST APIs
+- **Organized structure** - MCP function and tools in dedicated folder
 - **Tool extensibility** - Easy to add new tools in the `tools/` directory
 
 ## Setup
@@ -46,6 +47,18 @@ This server implements the following MCP methods:
 - `tools/list` - Returns available tools with schemas
 - `tools/call` - Executes a tool with parameters
 
+## Available Tools
+
+### `helloWorld`
+Simple greeting tool that demonstrates basic MCP functionality.
+- Input: `{ name: string }`
+- Output: Friendly greeting message
+
+### `jsonPlaceholder`
+API integration tool that fetches blog posts from JSONPlaceholder API.
+- Input: `{ postId: number }` (1-100)
+- Output: Blog post with title, body, and metadata
+
 ## Adding New Tools
 
 To add a new tool, create a file in `netlify/functions/mcp/tools/`:
@@ -65,14 +78,23 @@ export const metadata: ToolMetadata = {
 };
 
 export const handler: ToolHandler = async (params: { param1: string }) => {
-  // Your tool logic here
-  return { result: "Your result" };
+  // Your tool logic here - can include API calls, data processing, etc.
+  const response = await fetch("https://api.example.com/data");
+  const data = await response.json();
+  
+  return { 
+    result: "Your result",
+    data: data,
+    timestamp: new Date().toISOString()
+  };
 };
 ```
 
 Then export it from `tools/index.ts`:
 
 ```typescript
+export * as helloWorld from "./helloWorld";
+export * as jsonPlaceholder from "./jsonPlaceholder";
 export * as yourToolName from "./yourToolName";
 ```
 
@@ -86,17 +108,17 @@ netlify deploy --prod
 
 Your MCP server will be available at `https://your-site.netlify.app/mcp`
 
-## Background Functions
+## Function Architecture
 
-The function is named `mcp-background.ts` with the `-background` suffix, which tells Netlify to run it as a background function with up to 15 minutes of execution time. This is useful for:
+The implementation uses a regular Netlify function (`mcp.ts`) that provides:
 
-- Long-running computations
-- Data processing tasks
-- External API calls that may take time
-- Any MCP tool that needs more than the standard 10-second limit
+- **Synchronous responses** - Required for MCP's JSON-RPC protocol
+- **10-second execution limit** - Sufficient for most API calls and data processing
+- **Real-time communication** - Perfect for interactive MCP clients
+- **No special plan required** - Works on all Netlify plans
 
 ## Notes
 
-- Background functions are available on Netlify Pro plans and above
-- The function always returns immediately with a 202 status for actual MCP requests
 - CORS headers are included for browser-based MCP clients
+- Function and tools are organized in a dedicated `/mcp/` folder for better structure
+- Tools can make external API calls and return structured data
