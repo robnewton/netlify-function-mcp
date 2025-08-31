@@ -1,17 +1,59 @@
 {
   "name": "netlify-function-mcp",
   "version": "0.1.0",
+  "description": "A TypeScript package for building Model Context Protocol (MCP) servers as Netlify Functions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "keywords": [
+    "netlify",
+    "mcp",
+    "model-context-protocol",
+    "serverless",
+    "json-rpc",
+    "typescript",
+    "functions",
+    "api"
+  ],
+  "author": {
+    "name": "Rob Newton",
+    "email": "robbienewton@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/robnewton/netlify-function-mcp.git"
+  },
+  "homepage": "https://github.com/robnewton/netlify-function-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/robnewton/netlify-function-mcp/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "build": "tsc",
-    "prepare": "npm run build"
+    "clean": "rm -rf dist",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run clean && npm run build",
+    "version:patch": "npm version patch",
+    "version:minor": "npm version minor",
+    "version:major": "npm version major",
+    "publish:patch": "npm run version:patch && npm publish",
+    "publish:minor": "npm run version:minor && npm publish",
+    "publish:major": "npm run version:major && npm publish",
+    "publish:dry-run": "npm publish --dry-run"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
+  "peerDependencies": {
+    "@netlify/functions": "^2.0.0"
+  },
   "dependencies": {},
   "devDependencies": {
+    "@netlify/functions": "^2.8.1",
     "typescript": "^5.4.0"
   }
 }
