@@ -1,16 +1,19 @@
 # netlify-function-mcp
 
-A TypeScript package for implementing Model Context Protocol (MCP) servers as Netlify Functions with full JSON-RPC 2.0 support.
+A TypeScript package for building Model Context Protocol (MCP) servers as Netlify Functions. Provides a clean wrapper around the standard Netlify Handler pattern while handling all MCP protocol complexity.
+
+Perfect for creating multiple organized MCP servers on a single domain (like `mcp.yoursite.com`) with full access to Netlify's event and context objects.
 
 ## 🎯 Features
 
-- **MCP Protocol Compliant** - Implements JSON-RPC 2.0 message handling for full MCP protocol support
-- **Streamable HTTP Transport** - Compatible with MCP Inspector and other MCP clients
-- **Plugin Architecture** - Easy to add new tools as self-contained TypeScript modules
-- **External API Integration** - Tools can call public REST APIs and return structured data
-- **TypeScript First** - Full type safety with TypeScript definitions
-- **Organized Structure** - MCP function and tools isolated in dedicated folder
-- **Monorepo Structure** - Includes both the reusable package and example implementation
+- **🎭 Wrapper Pattern** - Preserves standard Netlify `Handler` interface with full event/context access
+- **🚀 Zero Boilerplate** - Handles all MCP protocol complexity automatically
+- **📡 MCP Compliant** - Full JSON-RPC 2.0 support compatible with MCP Inspector
+- **🏗️ Multi-Server Architecture** - Multiple organized MCP servers on one domain
+- **🔧 Flexible Customization** - From simple usage to full request/response control
+- **🛠️ Tool Ecosystem** - Easy to create tools that integrate with external APIs
+- **⚡ TypeScript First** - Complete type safety with excellent developer experience
+- **📁 Organized Structure** - Clean separation of servers and tools by purpose
 
 ## 📂 Structure
 
@@ -23,32 +26,38 @@ netlify-function-mcp/
 │            ├── types.ts
 │            ├── buildTools.ts
 │            ├── mcp-server.ts    # MCP protocol implementation
+│            ├── mcp-wrapper.ts   # Main wrapper function
 │            ├── jsonrpc.ts       # JSON-RPC 2.0 handling
 │            └── errors.ts        # Error handling
 ├── examples/
-│   └── netlify-site/             # demo Netlify site
+│   └── netlify-site/             # demo Netlify site with 3 server examples
 │       └── netlify/functions/
-│            ├── hello-world/      # Basic tools MCP server
-│            │    ├── hello-world.ts
+│            ├── hello-world/         # Basic tools (9 lines)
+│            │    ├── hello-world.ts  # Simple wrapper usage
 │            │    └── tools/
 │            │         ├── helloWorld.ts
 │            │         ├── calculator.ts
 │            │         └── index.ts
-│            └── api-tools/        # API integration MCP server
-│                 ├── api-tools.ts
+│            ├── api-tools/           # API integrations (44 lines)
+│            │    ├── api-tools.ts    # Custom logging example
+│            │    └── tools/
+│            │         ├── jsonPlaceholder.ts
+│            │         ├── weatherApi.ts
+│            │         └── index.ts
+│            └── advanced-example/    # Full customization (99 lines)
+│                 ├── advanced-example.ts  # Auth, logging, headers
 │                 └── tools/
-│                      ├── jsonPlaceholder.ts
-│                      ├── weatherApi.ts
+│                      ├── requestInfo.ts
 │                      └── index.ts
 └── package.json                  # monorepo root
 ```
 
 ## 🚀 Quick Start
 
-### 1. Install the package
+### 1. Install
 
 ```bash
-npm install netlify-function-mcp
+npm install netlify-function-mcp @netlify/functions
 ```
 
 ### 2. Create an MCP server
@@ -162,6 +171,55 @@ export * as helloWorld from "./helloWorld";
 export * as weatherApi from "./weatherApi";
 ```
 
+## 🔧 Why the Wrapper Pattern?
+
+The `withMcpHandler()` approach preserves the familiar Netlify Handler interface while eliminating all MCP boilerplate:
+
+### **Before** (Manual Implementation)
+```typescript
+export const handler: Handler = async (event, context) => {
+  // 90+ lines of JSON-RPC parsing, CORS handling, error management...
+  if (event.httpMethod === "OPTIONS") { /* CORS logic */ }
+  if (event.httpMethod !== "POST") { /* Error handling */ }
+  const request = parseJsonRpcMessage(event.body);
+  // More protocol handling...
+};
+```
+
+### **After** (With Wrapper)
+```typescript
+export const handler: Handler = withMcpHandler({
+  name: "my-server", version: "1.0.0", toolModules
+});
+// That's it! 9 lines vs 90+
+```
+
+### **Advanced Usage** (Full Control)
+```typescript
+export const handler: Handler = withMcpHandler(config, 
+  async ({ event, context, mcpServer }) => {
+    console.log(`${event.httpMethod} ${event.path}`, {
+      userAgent: event.headers['user-agent'],
+      requestId: context.awsRequestId
+    });
+    
+    // Custom auth, rate limiting, etc.
+    if (!event.headers.authorization) {
+      return { statusCode: 401, body: 'Unauthorized' };
+    }
+    
+    return await defaultMcpHandler({ event, context, mcpServer });
+  }
+);
+```
+
+### **Key Benefits**
+- **🎯 Familiar Pattern** - Standard Netlify `Handler` interface
+- **⚡ Zero Learning Curve** - Works exactly like regular Netlify functions
+- **🔓 Full Access** - Complete event/context access for auth, logging, etc.
+- **🛠️ Flexible** - Simple usage or complete customization
+- **📦 Zero Boilerplate** - All MCP protocol complexity handled automatically
+
 ### 4. Configure Netlify
 
 Add to `netlify.toml`:
@@ -187,56 +245,59 @@ Add to `netlify.toml`:
 
 3. Configure connection:
    - Transport: **Streamable HTTP**
-   - URL: `http://localhost:8888/hello-world` or `http://localhost:8888/api-tools`
+   - URL: Try any of these servers:
+     - `http://localhost:8888/hello-world` (basic tools)
+     - `http://localhost:8888/api-tools` (API integrations)
+     - `http://localhost:8888/advanced-example` (custom logging/auth)
 
 4. Click Connect
 
 The inspector will show available tools and allow you to test them.
 
-## 🔧 Wrapper Pattern Benefits
-
-The `withMcpHandler()` wrapper preserves the standard Netlify Handler pattern while adding MCP functionality:
-
-### **Standard Handler Pattern**
-```typescript
-export const handler: Handler = async (event, context) => {
-  // Your custom logic with full access to event and context
-  return { statusCode: 200, body: 'response' };
-};
-```
-
-### **MCP Wrapper Pattern** 
-```typescript
-export const handler: Handler = withMcpHandler(config, customHandler);
-```
-
-### **Key Benefits:**
-- **Full Event Access** - Access headers, query params, request body, user agent
-- **Context Access** - AWS request ID, function name, remaining time
-- **Custom Logic** - Authentication, logging, rate limiting, request modification
-- **Standard Pattern** - Familiar Netlify Handler interface
-- **Flexible** - Use default behavior or completely customize
-
 ## 🏗️ Multi-Server Architecture
 
-This implementation supports multiple MCP servers on a single domain, perfect for organizing tools by category:
+Deploy multiple specialized MCP servers on a single domain:
 
-### Example Servers
+### 🎯 **Organization by Purpose**
 
-**`/hello-world`** - Basic demonstration tools:
-- `helloWorld` - Simple greeting tool
-- `calculator` - Basic math operations
+```
+mcp.yoursite.com/
+├── /hello-world      → Basic demonstration tools
+├── /api-tools        → External API integrations  
+├── /data-processing  → Database & analytics tools
+├── /auth-services    → Authentication & user management
+└── /file-operations  → File upload, processing, storage
+```
 
-**`/api-tools`** - External API integrations:
+### 📊 **Example Servers in this Repo**
+
+| Server | Purpose | Lines of Code | Features |
+|--------|---------|---------------|----------|
+| **`/hello-world`** | Basic tools demo | 9 lines | Simple wrapper usage |
+| **`/api-tools`** | API integrations | 44 lines | Custom request logging |
+| **`/advanced-example`** | Full customization | 99 lines | Auth, headers, error handling |
+
+### 🛠️ **Available Tools**
+
+**Basic Tools** (`/hello-world`):
+- `helloWorld` - Greeting demonstration
+- `calculator` - Math operations
+
+**API Integrations** (`/api-tools`):
 - `jsonPlaceholder` - Blog post fetching
-- `weatherApi` - Weather data retrieval
+- `weatherApi` - Real weather data
 
-### Benefits
+**Advanced Examples** (`/advanced-example`):
+- `requestInfo` - Request context demonstration
 
-- **Organized by purpose** - Group related tools together
-- **Isolated dependencies** - Each server has its own tool modules
-- **Scalable routing** - Easy to add new server categories
-- **Domain efficiency** - Multiple servers on one domain (e.g., mcp.hopdrive.io)
+### 🎯 **Multi-Server Benefits**
+
+- **🎯 Purpose Organization** - Group tools by domain (auth, data, APIs, etc.)
+- **🔒 Isolation** - Each server has independent tools and dependencies  
+- **📈 Scalable** - Add new servers without touching existing ones
+- **🌐 Domain Efficient** - Multiple specialized servers on one domain
+- **🛡️ Security** - Different auth/access patterns per server category
+- **📊 Analytics** - Track usage patterns by tool category
 
 ### Adding New Servers
 
@@ -300,7 +361,7 @@ All communication uses JSON-RPC 2.0:
 ### Clone and Setup
 
 ```bash
-git clone https://github.com/yourusername/netlify-function-mcp.git
+git clone https://github.com/yourname/netlify-function-mcp.git
 cd netlify-function-mcp
 npm install
 ```
@@ -318,6 +379,18 @@ npm run build
 cd examples/netlify-site
 npm install
 netlify dev
+```
+
+### Deploy to Production
+
+```bash
+# Deploy to your custom domain
+netlify deploy --prod
+
+# Your MCP servers will be available at:
+# https://mcp.yoursite.com/hello-world
+# https://mcp.yoursite.com/api-tools  
+# https://mcp.yoursite.com/advanced-example
 ```
 
 ## 📝 Function Structure
