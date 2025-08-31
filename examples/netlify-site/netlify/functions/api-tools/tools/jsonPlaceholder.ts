@@ -36,7 +36,7 @@ export const handler: ToolHandler = async (params: { postId: number }) => {
 
     // Make the API request to JSONPlaceholder
     const response = await fetch(`https://jsonplaceholder.typicode.com/posts/${params.postId}`);
-
+    
     if (!response.ok) {
       throw new Error(`API request failed with status: ${response.status} ${response.statusText}`);
     }

@@ -7,6 +7,16 @@
   node_bundler = "esbuild"
 
 [[redirects]]
-  from = "/mcp"
-  to = "/.netlify/functions/mcp"
+  from = "/hello-world"
+  to = "/.netlify/functions/hello-world"
+  status = 200
+
+[[redirects]]
+  from = "/api-tools"
+  to = "/.netlify/functions/api-tools"
+  status = 200
+
+[[redirects]]
+  from = "/advanced-example"  
+  to = "/.netlify/functions/advanced-example"
   status = 200
